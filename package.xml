@@ -7,6 +7,23 @@
   <maintainer email="daniel.ruan@princeton.edu">Daniel Ruan</maintainer>
   <license>Apache License 2.0</license>
 
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>rosidl_parser</exec_depend>
+  <exec_depend>rosidl_runtime_py</exec_depend>
+  <exec_depend>navis_msgs</exec_depend>
+  <exec_depend>builtin_interfaces</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>rcl_interfaces</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
+  <exec_depend>python3-requests</exec_depend>
+  <exec_depend>python3-websockets</exec_depend>
+  <!-- optional, only for use_cbor:=true -->
+  <exec_depend>python3-cbor2</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
   <test_depend>ament_pep257</test_depend>
