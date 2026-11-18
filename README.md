@@ -12,6 +12,31 @@ All interfaces come from [`navis_msgs`](../navis_msgs); its README has the full 
 Both nodes handle the Navis housekeeping internally: the HTTP login token (renewed before its 24 h
 expiry) and the 1 Hz websocket heartbeat (Navis drops clients that stay silent for more than 3 s).
 
+## Setup (pixi)
+
+[`pixi.toml`](pixi.toml) sets up ROS 2 Jazzy (RoboStack) plus the Python dependencies on Linux and
+Windows. `navis_msgs` is expected next to this repository (`../navis_msgs`) and is built
+together with it:
+
+```bash
+pixi install
+pixi run build        # colcon build of navis_msgs + navis_controller
+pixi shell            # shell with ROS and install/ sourced
+```
+
+| Task | Does |
+|---|---|
+| `pixi run build` / `clean` | build the workspace / delete `build/`, `install/`, `log/` |
+| `pixi run test` | build, then `colcon test` with results |
+| `pixi run pytest` | run the tests directly (after a build) |
+| `pixi run launch` | `ros2 launch navis_controller navis.launch.py` (append launch args) |
+| `pixi run fake-navis` | fake Navis server on ports 8880/9090; launch with `robot_ip:=127.0.0.1` |
+| `pixi run format` / `lint` | ruff |
+
+On Windows, building `navis_msgs` needs Visual Studio 2022 (or Build Tools) with the C++ workload.
+The `install/setup.*` activation script only exists after the first build, so pixi may warn
+about it until then.
+
 ## Running
 
 Start both nodes with the launch file:

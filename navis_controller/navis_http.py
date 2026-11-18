@@ -97,7 +97,8 @@ def _to_int(value: Any, default: int = 0) -> int:
     if isinstance(value, (int, float)):
         return int(value)
     if isinstance(value, str):
-        match = re.search(r"-?\d+", value)
+        # A minus sign only counts at the start ("-3"); in "point-1" the hyphen is a separator.
+        match = re.fullmatch(r"\s*(-?\d+)\s*", value) or re.search(r"\d+", value)
         if match:
             return int(match.group())
     return default

@@ -1,0 +1,45 @@
+[workspace]
+name = "navis_controller"
+version = "0.0.0"
+authors = ["Daniel Ruan <daniel.ruan@princeton.edu>"]
+channels = ["conda-forge", "robostack-jazzy"]
+platforms = ["linux-64", "win-64"]
+
+# navis_msgs lives in a separate repository. By default it is expected next to this one
+# (../navis_msgs); change the --base-paths below if it is somewhere else.
+[tasks]
+build = "colcon build --base-paths . ../navis_msgs --cmake-args -DCMAKE_BUILD_TYPE=Release -G Ninja"
+clean = { cmd = "python -c \"import shutil; [shutil.rmtree(d, ignore_errors=True) for d in ('build', 'install', 'log')]\"" }
+test = { cmd = "colcon test --packages-select navis_controller --event-handlers console_direct+ && colcon test-result --verbose", depends-on = ["build"] }
+pytest = "python -m pytest test -v"
+launch = "ros2 launch navis_controller navis.launch.py"
+fake-navis = "python test/fake_navis_server.py --http-port 8880 --ws-port 9090 -v"
+format = "ruff format"
+lint = "ruff check"
+
+[dependencies]
+python = "3.12.*"
+ros-jazzy-ros-base = ">=0.11.0,<0.12"
+ros-jazzy-launch-ros = "*"
+ros-jazzy-rosidl-default-generators = "*"
+ros-jazzy-ament-cmake-auto = ">=2.5.3,<3"
+colcon-common-extensions = ">=0.3.0,<0.4"
+compilers = ">=1.9.0,<2"
+cmake = ">=3.31.6,<4"
+ninja = ">=1.12.1,<2"
+pkg-config = ">=0.29.2,<0.30"
+requests = ">=2.32.4,<3"
+websockets = ">=15.0.1,<16"
+cbor2 = "*"
+numpy = ">=1.26.4,<2"
+pytest = ">=8.3.5,<9"
+ruff = ">=0.9.7,<0.10"
+
+[activation.env]
+RMW_IMPLEMENTATION = "rmw_fastrtps_cpp"
+
+[target.unix.activation]
+scripts = ["install/setup.sh"]
+
+[target.win-64.activation]
+scripts = ["install/setup.bat"]

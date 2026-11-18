@@ -1,0 +1,5 @@
+line-length = 120
+exclude = ["build", "install", "log", ".pixi"]
+
+[lint]
+extend-select = ["RUF013"]

@@ -22,7 +22,8 @@ import asyncio
 import json
 import threading
 import time
-from collections.abc import Callable, Optional
+from collections.abc import Callable
+from typing import Optional
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -128,12 +129,20 @@ class FakeNavis:
 
         self._loop = asyncio.new_event_loop()
         ready = threading.Event()
+        startup_error: list[BaseException] = []
+
+        async def serve():
+            # websockets >= 14 needs a running loop when serve() is constructed
+            return await websockets.serve(self._ws_handler, "127.0.0.1", self._ws_port_req, max_size=None)
 
         def run():
             asyncio.set_event_loop(self._loop)
-            self._ws_server = self._loop.run_until_complete(
-                websockets.serve(self._ws_handler, "127.0.0.1", self._ws_port_req, max_size=None)
-            )
+            try:
+                self._ws_server = self._loop.run_until_complete(serve())
+            except BaseException as exc:  # noqa: BLE001
+                startup_error.append(exc)
+                ready.set()
+                return
             ready.set()
             self._loop.run_forever()
 
@@ -141,6 +150,8 @@ class FakeNavis:
         self._ws_thread.start()
         if not ready.wait(5.0):
             raise RuntimeError("fake websocket server did not start")
+        if startup_error:
+            raise RuntimeError("fake websocket server did not start") from startup_error[0]
 
     def stop(self) -> None:
         if self._http is not None:
