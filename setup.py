@@ -1,3 +1,5 @@
+from glob import glob
+
 from setuptools import find_packages, setup
 
 package_name = "navis_controller"
@@ -9,8 +11,11 @@ setup(
     data_files=[
         ("share/ament_index/resource_index/packages", ["resource/" + package_name]),
         ("share/" + package_name, ["package.xml"]),
+        ("share/" + package_name + "/launch", glob("launch/*.launch.py")),
+        ("share/" + package_name + "/config", glob("config/*.yaml")),
     ],
     install_requires=["setuptools"],
+    extras_require={"test": ["pytest"]},
     zip_safe=True,
     maintainer="Daniel Ruan",
     maintainer_email="daniel.ruan@princeton.edu",
@@ -19,9 +24,7 @@ setup(
     entry_points={
         "console_scripts": [
             "navis_websocket = navis_controller.navis_websocket:main",
-            "odom_ema = navis_controller.odom_ema:main",
             "navis_http = navis_controller.navis_http:main",
-            "map_viewer = navis_controller.map_viewer:main"
         ],
     },
 )
