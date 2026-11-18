@@ -24,7 +24,7 @@ setup(
     entry_points={
         "console_scripts": [
             "navis_websocket = navis_controller.navis_websocket:main",
-            "navis_http = navis_controller.navis_http:main"
+            "navis_http = navis_controller.navis_http:main",
         ],
     },
 )

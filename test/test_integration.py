@@ -76,13 +76,17 @@ def h():
     fake = FakeNavis(publish_period=0.05)
     fake.start()
     rclpy.init()
-    http = NavisHTTPClient(parameter_overrides=[
-        Parameter("base_url", value=f"http://127.0.0.1:{fake.http_port}"),
-    ])
-    ws = NavisWebsocketClient(parameter_overrides=[
-        Parameter("ws_url", value=f"ws://127.0.0.1:{fake.ws_port}"),
-        Parameter("reconnect_delay", value=0.2),
-    ])
+    http = NavisHTTPClient(
+        parameter_overrides=[
+            Parameter("base_url", value=f"http://127.0.0.1:{fake.http_port}"),
+        ]
+    )
+    ws = NavisWebsocketClient(
+        parameter_overrides=[
+            Parameter("ws_url", value=f"ws://127.0.0.1:{fake.ws_port}"),
+            Parameter("reconnect_delay", value=0.2),
+        ]
+    )
     client = rclpy.create_node("navis_test_client")
     executor = MultiThreadedExecutor(num_threads=8)
     for node in (http, ws, client):
@@ -105,6 +109,7 @@ def h():
 # ----------------------------------------------------------------------------------------------
 # HTTP node
 # ----------------------------------------------------------------------------------------------
+
 
 def test_logs_in_at_startup(h):
     assert h.fake.logins >= 1
@@ -222,6 +227,7 @@ def test_slam_operate(h):
 # Websocket node
 # ----------------------------------------------------------------------------------------------
 
+
 def test_heartbeat(h):
     pings = h.fake.pings
     assert wait_for(lambda: h.fake.pings >= pings + 2, timeout=4.0)
@@ -268,7 +274,9 @@ def test_nav_input(h):
     assert res.result and res.success
     assert res.message == "start navigation success."
     assert h.fake.service_calls("/input/op")[-1]["args"] == {
-        "file_name": "office", "op_type": "start", "id_type": "navigation",
+        "file_name": "office",
+        "op_type": "start",
+        "id_type": "navigation",
     }
 
 
@@ -298,8 +306,9 @@ def test_charging_services(h):
     res = h.call(GetChargePoint, "/navis/get_charge_point")
     assert res.success
     assert res.charge_point.pose.position.x == pytest.approx(-6.903390407562256)
-    res = h.call(SetChargeLevel, "/navis/set_charge_level",
-                 SetChargeLevel.Request(min_charge_level=20, max_charge_level=90))
+    res = h.call(
+        SetChargeLevel, "/navis/set_charge_level", SetChargeLevel.Request(min_charge_level=20, max_charge_level=90)
+    )
     assert res.success and (res.min_charge_level, res.max_charge_level) == (20, 90)
     assert h.call(Trigger, "/navis/set_charge_point").success
 
@@ -329,6 +338,7 @@ def test_cmd_vel_gated_and_clamped(h):
         def sent():
             pub.publish(fast)
             return h.fake.published("/cmd_vel")
+
         assert wait_for(sent)
         cmd = h.fake.published("/cmd_vel")[0]
         assert cmd["linear"]["x"] == pytest.approx(1.5)  # clamped

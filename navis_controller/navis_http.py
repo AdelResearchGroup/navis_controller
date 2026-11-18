@@ -39,12 +39,8 @@ import threading
 import time
 from typing import Any, Callable, Optional
 
-import requests
 import rclpy
-from rclpy.callback_groups import ReentrantCallbackGroup
-from rclpy.executors import MultiThreadedExecutor
-from rclpy.node import Node
-
+import requests
 from navis_msgs.msg import CameraStream, MapSummary, Task, TaskAction, TaskPoint, VersionInfo
 from navis_msgs.srv import (
     AddCamera,
@@ -70,6 +66,9 @@ from navis_msgs.srv import (
     SetCamera,
     SetTask,
 )
+from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.node import Node
 
 DEFAULT_PASSWORD = "NTdhMTE5NGNiMDczY2U4YjNiYjM2NWU0YjgwNWE5YWU="  # from the Navis user manual
 TOKEN_LIFETIME_S = 23 * 3600.0  # Navis tokens expire after 24 h; refresh a bit earlier
@@ -82,6 +81,7 @@ class NavisError(Exception):
 # ----------------------------------------------------------------------------------------------
 # Small conversion helpers
 # ----------------------------------------------------------------------------------------------
+
 
 def _to_float(value: Any, default: float = 0.0) -> float:
     try:
@@ -130,6 +130,7 @@ def _navis_error_text(path: str, body: dict) -> str:
 # Node
 # ----------------------------------------------------------------------------------------------
 
+
 class NavisHTTPClient(Node):
     def __init__(self, **kwargs):
         super().__init__("navis_http", **kwargs)
@@ -137,8 +138,8 @@ class NavisHTTPClient(Node):
         self.declare_parameter("base_url", "http://192.168.6.102:8880")
         self.declare_parameter("username", "agilex")
         self.declare_parameter("password", DEFAULT_PASSWORD)
-        self.declare_parameter("timeout", 10.0)           # s, regular requests
-        self.declare_parameter("download_timeout", 120.0) # s, map image / zip transfers
+        self.declare_parameter("timeout", 10.0)  # s, regular requests
+        self.declare_parameter("download_timeout", 120.0)  # s, map image / zip transfers
         self.declare_parameter("download_dir", "~/navis_maps")  # default target for exports
         self.declare_parameter("frame_id", "map")
         # Units of the task point "theta" field. The manual's set_task / realtime_task examples
@@ -257,8 +258,13 @@ class NavisHTTPClient(Node):
             headers = {"Authorization": self._get_token()}
             try:
                 r = self._session.request(
-                    method, url, params=params, json=json_body, files=files,
-                    headers=headers, timeout=timeout,
+                    method,
+                    url,
+                    params=params,
+                    json=json_body,
+                    files=files,
+                    headers=headers,
+                    timeout=timeout,
                 )
             except requests.RequestException as e:
                 raise NavisError(f"{method} {path} failed: {e}") from e
@@ -290,6 +296,7 @@ class NavisHTTPClient(Node):
 
     def _wrap(self, handler: Callable) -> Callable:
         """Turn a handler that raises NavisError into a service callback that never throws."""
+
         def callback(request, response):
             try:
                 handler(request, response)
@@ -304,6 +311,7 @@ class NavisHTTPClient(Node):
                 response.message = f"{type(e).__name__}: {e}"
                 self.get_logger().error(f"Unexpected error in {handler.__name__}: {response.message}")
             return response
+
         return callback
 
     @staticmethod
@@ -370,20 +378,22 @@ class NavisHTTPClient(Node):
             "cpy": p.control_point.y,
         }
         if full:
-            d.update({
-                "pointType": p.point_type or TaskPoint.POINT_TYPE_NAVIGATION,
-                "pointName": p.point_name,
-                "index": p.index,
-                "actions": [
-                    {
-                        "actionContent": f"{a.duration:g}",
-                        "actionType": a.action_type,
-                        "actionOrder": a.action_order,
-                        "actionName": a.action_name,
-                    }
-                    for a in p.actions
-                ],
-            })
+            d.update(
+                {
+                    "pointType": p.point_type or TaskPoint.POINT_TYPE_NAVIGATION,
+                    "pointName": p.point_name,
+                    "index": p.index,
+                    "actions": [
+                        {
+                            "actionContent": f"{a.duration:g}",
+                            "actionType": a.action_type,
+                            "actionOrder": a.action_order,
+                            "actionName": a.action_name,
+                        }
+                        for a in p.actions
+                    ],
+                }
+            )
         return d
 
     def _task_from_navis(self, d: dict) -> Task:
@@ -479,8 +489,11 @@ class NavisHTTPClient(Node):
 
     def _get_map_image_cb(self, request: GetMapImage.Request, response: GetMapImage.Response):
         r = self._request(
-            "GET", "/downloadpng", params={"mapName": request.map_name},
-            raw=True, timeout=self._download_timeout,
+            "GET",
+            "/downloadpng",
+            params={"mapName": request.map_name},
+            raw=True,
+            timeout=self._download_timeout,
         )
         content = r.content
         response.image.header.stamp = self.get_clock().now().to_msg()
@@ -494,7 +507,8 @@ class NavisHTTPClient(Node):
 
     def _rename_map_cb(self, request: RenameMap.Request, response: RenameMap.Response):
         body = self._request(
-            "POST", "/rename_map",
+            "POST",
+            "/rename_map",
             json_body={"mapName": request.map_name, "newMapName": request.new_map_name},
         )
         response.success = True
@@ -507,8 +521,11 @@ class NavisHTTPClient(Node):
 
     def _export_map_cb(self, request: ExportMap.Request, response: ExportMap.Response):
         r = self._request(
-            "GET", "/download_map_zip", params={"id": request.map_name},
-            raw=True, timeout=self._download_timeout,
+            "GET",
+            "/download_map_zip",
+            params={"id": request.map_name},
+            raw=True,
+            timeout=self._download_timeout,
         )
         target = request.save_path or os.path.join(self._download_dir, f"{request.map_name}.zip")
         response.saved_path = self._write_file(r.content, target)
@@ -518,8 +535,11 @@ class NavisHTTPClient(Node):
     def _export_maps_cb(self, request: ExportMaps.Request, response: ExportMaps.Response):
         ids = [int(i) for i in request.map_ids]
         r = self._request(
-            "POST", "/download_map_list", json_body=ids,
-            raw=True, timeout=self._download_timeout,
+            "POST",
+            "/download_map_list",
+            json_body=ids,
+            raw=True,
+            timeout=self._download_timeout,
         )
         target = request.save_path or os.path.join(self._download_dir, f"navis_maps_{int(time.time())}.zip")
         response.saved_path = self._write_file(r.content, target)
@@ -540,7 +560,8 @@ class NavisHTTPClient(Node):
 
     def _pixel_to_map_cb(self, request: PixelToMap.Request, response: PixelToMap.Response):
         body = self._request(
-            "GET", "/get_map/positon",  # sic, Navis spelling
+            "GET",
+            "/get_map/positon",  # sic, Navis spelling
             params={"mapName": request.map_name, "pngX": request.png_x, "pngY": request.png_y},
         )
         data = body.get("data") or {}
@@ -550,7 +571,8 @@ class NavisHTTPClient(Node):
 
     def _map_to_pixel_cb(self, request: MapToPixel.Request, response: MapToPixel.Response):
         body = self._request(
-            "GET", "/get_world/positon",  # sic, Navis spelling
+            "GET",
+            "/get_world/positon",  # sic, Navis spelling
             params={"mapName": request.map_name, "poseX": request.position.x, "poseY": request.position.y},
         )
         data = body.get("data") or {}

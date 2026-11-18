@@ -23,8 +23,8 @@ import json
 import threading
 import time
 from collections.abc import Callable
-from typing import Optional
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Optional
 from urllib.parse import parse_qs, urlparse
 
 import websockets
@@ -49,14 +49,24 @@ TASK_P1 = {
     "personName": "",
     "points": [
         {
-            "isNew": True, "index": "point-1", "pointType": "navigation", "pointName": "",
+            "isNew": True,
+            "index": "point-1",
+            "pointType": "navigation",
+            "pointName": "",
             "actions": [{"actionContent": "5", "actionType": "stop", "actionOrder": 0, "actionName": "wait"}],
-            "position": {"x": -3.35, "y": 37.48, "theta": 78.24}, "cpx": 0, "cpy": 0,
+            "position": {"x": -3.35, "y": 37.48, "theta": 78.24},
+            "cpx": 0,
+            "cpy": 0,
         },
         {
-            "isNew": True, "index": "point-2", "pointType": "navigation", "pointName": "",
+            "isNew": True,
+            "index": "point-2",
+            "pointType": "navigation",
+            "pointName": "",
             "actions": [],
-            "position": {"x": -2.45, "y": 34.53, "theta": 169.32}, "cpx": 0, "cpy": 0,
+            "position": {"x": -2.45, "y": 34.53, "theta": 169.32},
+            "cpx": 0,
+            "cpy": 0,
         },
     ],
 }
@@ -73,8 +83,10 @@ TOPIC_MESSAGES = {
         "header": {"stamp": {"secs": 1681805920, "nsecs": 64378373}, "frame_id": "/map", "seq": 1098806},
         "child_frame_id": "base_link",
         "pose": {
-            "pose": {"position": {"x": 1.5, "y": -2.0, "z": 0.0},
-                     "orientation": {"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0}},
+            "pose": {
+                "position": {"x": 1.5, "y": -2.0, "z": 0.0},
+                "orientation": {"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0},
+            },
             "covariance": [0.0] * 36,
         },
         "twist": {
@@ -83,7 +95,11 @@ TOPIC_MESSAGES = {
         },
     },
     "/interface_management/BMS_status": {
-        "batteryCurrent": -1.5, "SOH": 98, "SOC": 76, "batteryTemperature": 25.0, "batteryVoltage": 26.4,
+        "batteryCurrent": -1.5,
+        "SOH": 98,
+        "SOC": 76,
+        "batteryTemperature": 25.0,
+        "batteryVoltage": 26.4,
     },
     "/run_management/global_status": {"map_name": "office", "status": 1, "text": ""},
 }
@@ -158,9 +174,11 @@ class FakeNavis:
             self._http.shutdown()
             self._http.server_close()
         if self._loop is not None and self._ws_server is not None:
+
             async def shutdown():
                 self._ws_server.close()
                 await self._ws_server.wait_closed()
+
             try:
                 asyncio.run_coroutine_threadsafe(shutdown(), self._loop).result(timeout=5.0)
             except Exception:  # noqa: BLE001
@@ -213,7 +231,7 @@ class FakeNavis:
 
     def handle_http(self, method: str, path: str, query: dict, body, headers) -> tuple[int, str, bytes]:
         if path.startswith("/apiUrl"):
-            path = path[len("/apiUrl"):]
+            path = path[len("/apiUrl") :]
         self.http_requests.append((method, path, query, body))
         self._log(f"HTTP {method} {path} {query or ''} {json.dumps(body) if body is not None else ''}")
 
@@ -240,23 +258,52 @@ class FakeNavis:
             ("GET", "/get_world/positon"): self._map_to_pixel,
             ("GET", "/get_tasks"): self._get_task,
             ("POST", "/set_task"): self._set_task,
-            ("GET", "/version_info"): lambda q, b: self._json(_standard([
-                {"id": "Navis Board", "version": "0.8.1.20230201_beta1"},
-                {"id": "Navis Brain", "version": "0.0.16.0109_beta"},
-                {"id": "Navis Bridge", "version": "0.0.2.0201_beta"},
-            ])),
-            ("GET", "/dev_version"): lambda q, b: self._json(_standard([
-                {"id": "computer", "type": "X-7010", "s_version": "---", "h_version": "---"},
-            ])),
-            ("GET", "/get_camera_list"): lambda q, b: self._json(_standard({"total": 1, "streams": [
-                {"cameraId": "cam1", "cameraName": "front", "onDemand": False, "disableAudio": True,
-                 "rtspUrl": "rtsp://127.0.0.1/front"},
-            ]})),
+            ("GET", "/version_info"): lambda q, b: self._json(
+                _standard(
+                    [
+                        {"id": "Navis Board", "version": "0.8.1.20230201_beta1"},
+                        {"id": "Navis Brain", "version": "0.0.16.0109_beta"},
+                        {"id": "Navis Bridge", "version": "0.0.2.0201_beta"},
+                    ]
+                )
+            ),
+            ("GET", "/dev_version"): lambda q, b: self._json(
+                _standard(
+                    [
+                        {"id": "computer", "type": "X-7010", "s_version": "---", "h_version": "---"},
+                    ]
+                )
+            ),
+            ("GET", "/get_camera_list"): lambda q, b: self._json(
+                _standard(
+                    {
+                        "total": 1,
+                        "streams": [
+                            {
+                                "cameraId": "cam1",
+                                "cameraName": "front",
+                                "onDemand": False,
+                                "disableAudio": True,
+                                "rtspUrl": "rtsp://127.0.0.1/front",
+                            },
+                        ],
+                    }
+                )
+            ),
         }.get((method, path))
         if route is not None:
             return route(query, body)
-        if path in {"/rename_map", "/delete_map", "/upload_map_zip", "/delete_task", "/realtime_task",
-                    "/run_list_task", "/add_camera", "/set_camera", "/delete_camera"}:
+        if path in {
+            "/rename_map",
+            "/delete_map",
+            "/upload_map_zip",
+            "/delete_task",
+            "/realtime_task",
+            "/run_list_task",
+            "/add_camera",
+            "/set_camera",
+            "/delete_camera",
+        }:
             return self._json(_standard())
         return self._json(_standard(ok=False, msg=f"unknown endpoint {method} {path}"), status=404)
 
@@ -325,8 +372,11 @@ class FakeNavis:
                     self._log(f"WS <- {json.dumps(msg)[:300]}")
                 if op == "ping":
                     self.pings += 1
-                    await ws.send(json.dumps({"op": "pong", "timeStamp": msg.get("timeStamp"),
-                                              "serverTime": int(time.time() * 1000)}))
+                    await ws.send(
+                        json.dumps(
+                            {"op": "pong", "timeStamp": msg.get("timeStamp"), "serverTime": int(time.time() * 1000)}
+                        )
+                    )
                 elif op == "subscribe":
                     conn["subs"].add(msg.get("topic"))
                 elif op == "unsubscribe":
@@ -345,9 +395,9 @@ class FakeNavis:
             for topic in list(conn["subs"]):
                 if topic in self.topic_messages:
                     try:
-                        await conn["ws"].send(json.dumps(
-                            {"op": "publish", "topic": topic, "msg": self.topic_messages[topic]}
-                        ))
+                        await conn["ws"].send(
+                            json.dumps({"op": "publish", "topic": topic, "msg": self.topic_messages[topic]})
+                        )
                     except Exception:  # noqa: BLE001
                         return
             await asyncio.sleep(self.publish_period)
@@ -360,18 +410,26 @@ class FakeNavis:
             values = {"success": True, "message": f"{args.get('op_type')} {args.get('id_type')} success."}
         elif service == "/run_management/pause":
             values = {"success": True, "message": f"pause={args.get('pause')}"}
-        elif service in ("/run_management/next_goal", "/run_management/switch_obstacle_avoid_model",
-                         "/find_charger/set_charge"):
+        elif service in (
+            "/run_management/next_goal",
+            "/run_management/switch_obstacle_avoid_model",
+            "/find_charger/set_charge",
+        ):
             values = {"success": True, "message": f"data={args.get('data')}"}
         elif service == "/find_charger/set_charge_point":
             values = {}
         elif service == "/find_charger/get_charge_point":
-            values = {"get_charge_point": True,
-                      "charge_point": {"x": -6.903390407562256, "y": 1.3843873739242554,
-                                       "theta": 1.7618789011855123}}
+            values = {
+                "get_charge_point": True,
+                "charge_point": {"x": -6.903390407562256, "y": 1.3843873739242554, "theta": 1.7618789011855123},
+            }
         elif service == "/find_charger/set_charge_level":
-            values = {"message": "success.", "min_charge_level": args.get("min_charge_level"),
-                      "max_charge_level": args.get("max_charge_level"), "success": True}
+            values = {
+                "message": "success.",
+                "min_charge_level": args.get("min_charge_level"),
+                "max_charge_level": args.get("max_charge_level"),
+                "success": True,
+            }
         else:
             result, values = False, f"unknown service {service}"
         response = {"op": "service_response", "service": service, "result": result, "values": values}

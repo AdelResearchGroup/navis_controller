@@ -16,6 +16,8 @@ launch = "ros2 launch navis_controller navis.launch.py"
 fake-navis = "python test/fake_navis_server.py --http-port 8880 --ws-port 9090 -v"
 format = "ruff format"
 lint = "ruff check"
+sort-imports = "ruff check --fix --select \"I,RUF022\""
+style = { depends-on = ["format", "sort-imports"] }
 
 [dependencies]
 python = "3.12.*"

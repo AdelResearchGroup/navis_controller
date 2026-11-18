@@ -41,19 +41,9 @@ from typing import Any, Callable, Optional
 
 import rclpy
 import websockets
-from rclpy.callback_groups import ReentrantCallbackGroup
-from rclpy.executors import MultiThreadedExecutor
-from rclpy.node import Node
-from rosidl_parser.definition import AbstractGenericString, AbstractNestedType, Array, BasicType, NamespacedType
-from rosidl_runtime_py.import_message import import_message_from_namespaced_type
-
 from builtin_interfaces.msg import Time
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Twist
 from nav_msgs.msg import Odometry, Path
-from rcl_interfaces.msg import Log
-from sensor_msgs.msg import BatteryState, CameraInfo, CompressedImage, Image, Imu, LaserScan, NavSatFix, NavSatStatus, PointCloud2
-from std_msgs.msg import Bool, Float64, Int32
-from std_srvs.srv import SetBool, Trigger
 from navis_msgs.msg import (
     DiskState,
     DiskStates,
@@ -67,6 +57,25 @@ from navis_msgs.msg import (
     TaskStatus,
 )
 from navis_msgs.srv import GetChargePoint, NavInput, SetChargeLevel
+from rcl_interfaces.msg import Log
+from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.node import Node
+from rosidl_parser.definition import AbstractGenericString, AbstractNestedType, Array, BasicType, NamespacedType
+from rosidl_runtime_py.import_message import import_message_from_namespaced_type
+from sensor_msgs.msg import (
+    BatteryState,
+    CameraInfo,
+    CompressedImage,
+    Image,
+    Imu,
+    LaserScan,
+    NavSatFix,
+    NavSatStatus,
+    PointCloud2,
+)
+from std_msgs.msg import Bool, Float64, Int32
+from std_srvs.srv import SetBool, Trigger
 
 try:  # optional: only needed when use_cbor is enabled
     import cbor2
@@ -87,10 +96,17 @@ _BYTE_TYPES = {"uint8", "octet", "char"}
 
 # RFC 8746 typed-array CBOR tags used by rosbridge (little-endian variants)
 _CBOR_TYPED_ARRAYS = {
-    64: None, 68: None,  # uint8 -> bytes
-    69: "<u2", 70: "<u4", 71: "<u8",
-    72: "i1", 77: "<i2", 78: "<i4", 79: "<i8",
-    85: "<f4", 86: "<f8",
+    64: None,
+    68: None,  # uint8 -> bytes
+    69: "<u2",
+    70: "<u4",
+    71: "<u8",
+    72: "i1",
+    77: "<i2",
+    78: "<i4",
+    79: "<i8",
+    85: "<f4",
+    86: "<f8",
 }
 
 
@@ -211,6 +227,7 @@ def _stamp_dict(stamp: Time) -> dict:
 # ----------------------------------------------------------------------------------------------
 # Navis-specific message converters
 # ----------------------------------------------------------------------------------------------
+
 
 def _module(d: Optional[dict]) -> ModuleStatus:
     d = d or {}
@@ -365,15 +382,16 @@ def _charge_point_pose(d: dict, frame_id: str) -> Optional[PoseStamped]:
 @dataclass
 class TopicSpec:
     navis_topic: str
-    navis_type: str               # ROS 1 type sent with the subscribe request
+    navis_type: str  # ROS 1 type sent with the subscribe request
     ros_type: type
     convert: Callable[[dict], Any]
-    bulky: bool = False           # request CBOR compression when use_cbor is enabled
+    bulky: bool = False  # request CBOR compression when use_cbor is enabled
 
 
 # ----------------------------------------------------------------------------------------------
 # Node
 # ----------------------------------------------------------------------------------------------
+
 
 class _PendingCall:
     def __init__(self, service: str):
@@ -389,21 +407,20 @@ class NavisWebsocketClient(Node):
 
         self.declare_parameter("ws_url", "ws://192.168.6.102:9090")
         self.declare_parameter("always_subscribe", ["/slam_status"])
-        self.declare_parameter("use_cbor", False)            # CBOR for point clouds / scans / images
-        self.declare_parameter("use_navis_stamps", False)    # False: restamp with local time on receipt
+        self.declare_parameter("use_cbor", False)  # CBOR for point clouds / scans / images
+        self.declare_parameter("use_navis_stamps", False)  # False: restamp with local time on receipt
         self.declare_parameter("map_frame", "map")
         self.declare_parameter("gnss_frame", "gnss")
         self.declare_parameter("service_timeout", 30.0)
         self.declare_parameter("reconnect_delay", 2.0)
-        self.declare_parameter("heartbeat_period", 1.0)      # Navis drops clients silent for > 3 s
+        self.declare_parameter("heartbeat_period", 1.0)  # Navis drops clients silent for > 3 s
         self.declare_parameter("cmd_vel_topic", "/cmd_vel")
         self.declare_parameter("cmd_vel_enabled", False)
-        self.declare_parameter("max_linear_speed", 1.5)      # m/s, Navis limit
-        self.declare_parameter("max_angular_speed", 1.5)     # rad/s, Navis limit
+        self.declare_parameter("max_linear_speed", 1.5)  # m/s, Navis limit
+        self.declare_parameter("max_angular_speed", 1.5)  # rad/s, Navis limit
 
         self._url = self.get_parameter("ws_url").value
-        self._always = {t if t.startswith("/") else "/" + t
-                        for t in self.get_parameter("always_subscribe").value if t}
+        self._always = {t if t.startswith("/") else "/" + t for t in self.get_parameter("always_subscribe").value if t}
         self._use_cbor = bool(self.get_parameter("use_cbor").value)
         if self._use_cbor and cbor2 is None:
             self.get_logger().warning("use_cbor is set but cbor2 is not installed; falling back to JSON")
@@ -433,17 +450,28 @@ class NavisWebsocketClient(Node):
             TopicSpec("/scan", "sensor_msgs/LaserScan", LaserScan, _generic(LaserScan), bulky=True),
             TopicSpec("/localizer_pose", "geometry_msgs/PoseStamped", PoseStamped, _generic(PoseStamped)),
             TopicSpec("/camera/color/image_raw", "sensor_msgs/Image", Image, _generic(Image), bulky=True),
-            TopicSpec("/camera/color/image_raw/compressed", "sensor_msgs/CompressedImage", CompressedImage,
-                      _generic(CompressedImage), bulky=True),
+            TopicSpec(
+                "/camera/color/image_raw/compressed",
+                "sensor_msgs/CompressedImage",
+                CompressedImage,
+                _generic(CompressedImage),
+                bulky=True,
+            ),
             TopicSpec("/camera/color/camera_info", "sensor_msgs/CameraInfo", CameraInfo, _generic(CameraInfo)),
             TopicSpec("/camera/depth/image_rect_raw", "sensor_msgs/Image", Image, _generic(Image), bulky=True),
-            TopicSpec("/camera/depth/image_rect_raw/compressed", "sensor_msgs/CompressedImage", CompressedImage,
-                      _generic(CompressedImage), bulky=True),
+            TopicSpec(
+                "/camera/depth/image_rect_raw/compressed",
+                "sensor_msgs/CompressedImage",
+                CompressedImage,
+                _generic(CompressedImage),
+                bulky=True,
+            ),
             TopicSpec("/camera/depth/camera_info", "sensor_msgs/CameraInfo", CameraInfo, _generic(CameraInfo)),
             TopicSpec("/freego_log/log", "freego_log/Log", Log, _log),
             TopicSpec("/disk_states", "tools_msgs/DiskStates", DiskStates, _disk_states),
-            TopicSpec("/run_management/global_status", "support_ros/GlobalStatus", NavigationStatus,
-                      _navigation_status),
+            TopicSpec(
+                "/run_management/global_status", "support_ros/GlobalStatus", NavigationStatus, _navigation_status
+            ),
             TopicSpec("/run_management/task_status", "support_ros/TaskStatus", TaskStatus, _task_status),
             TopicSpec("/run_management/task_progress", "std_msgs/Float64", Float64, _generic(Float64)),
             TopicSpec("/localization_lost", "std_msgs/Bool", Bool, _generic(Bool)),
@@ -451,23 +479,25 @@ class NavisWebsocketClient(Node):
             TopicSpec("/odom_raw", "nav_msgs/Odometry", Odometry, _generic(Odometry)),
             TopicSpec("/run_management/visual_path", "nav_msgs/Path", Path, _generic(Path)),
             TopicSpec("/map_progress", "std_msgs/Int32", Int32, _generic(Int32)),
-            TopicSpec("/find_charger/get_charge_point", "tools_msgs/getChargePoint", PoseStamped,
-                      lambda d: _charge_point_pose(d, self._map_frame)),
+            TopicSpec(
+                "/find_charger/get_charge_point",
+                "tools_msgs/getChargePoint",
+                PoseStamped,
+                lambda d: _charge_point_pose(d, self._map_frame),
+            ),
         ]
         self._specs = {s.navis_topic: s for s in specs}
-        self._pubs = {
-            s.navis_topic: self.create_publisher(s.ros_type, "navis" + s.navis_topic, 10) for s in specs
-        }
+        self._pubs = {s.navis_topic: self.create_publisher(s.ros_type, "navis" + s.navis_topic, 10) for s in specs}
         unknown = self._always - self._specs.keys()
         if unknown:
             self.get_logger().warning(f"always_subscribe contains unsupported topics: {sorted(unknown)}")
 
         # --- Commands from ROS -----------------------------------------------------------------
         self.create_subscription(Twist, "navis/cmd_vel", self._cmd_vel_cb, 10, callback_group=self._cb_group)
-        self.create_subscription(LightCommand, "navis/light_command", self._light_cb, 10,
-                                 callback_group=self._cb_group)
-        self.create_subscription(PoseWithCovarianceStamped, "navis/initialpose", self._initialpose_cb, 10,
-                                 callback_group=self._cb_group)
+        self.create_subscription(LightCommand, "navis/light_command", self._light_cb, 10, callback_group=self._cb_group)
+        self.create_subscription(
+            PoseWithCovarianceStamped, "navis/initialpose", self._initialpose_cb, 10, callback_group=self._cb_group
+        )
 
         services = [
             (NavInput, "navis/nav_input", self._nav_input_cb),
@@ -593,8 +623,9 @@ class NavisWebsocketClient(Node):
         if stripped[:1] in (b"{", b"["):
             return json.loads(raw.decode("utf-8"))
         if cbor2 is None:
-            self.get_logger().warning("Received binary (CBOR) frame but cbor2 is not installed",
-                                      throttle_duration_sec=10.0)
+            self.get_logger().warning(
+                "Received binary (CBOR) frame but cbor2 is not installed", throttle_duration_sec=10.0
+            )
             return None
         return cbor2.loads(raw, tag_hook=self._cbor_tag_hook)
 
@@ -605,6 +636,7 @@ class NavisWebsocketClient(Node):
             if dtype is None:
                 return bytes(tag.value)
             import numpy as np
+
             return np.frombuffer(tag.value, dtype=dtype).tolist()
         return tag
 
@@ -704,8 +736,7 @@ class NavisWebsocketClient(Node):
             if pending is None or pending.event.is_set():
                 # Server did not echo our id: match the oldest outstanding call to that service.
                 pending = next(
-                    (p for p in self._pending.values()
-                     if p.service == data.get("service") and not p.event.is_set()),
+                    (p for p in self._pending.values() if p.service == data.get("service") and not p.event.is_set()),
                     None,
                 )
             if pending is None:
@@ -735,6 +766,7 @@ class NavisWebsocketClient(Node):
 
     def _wrap(self, handler: Callable) -> Callable:
         """Turn a handler that raises NavisError into a service callback that never throws."""
+
         def callback(request, response):
             try:
                 handler(request, response)
@@ -747,6 +779,7 @@ class NavisWebsocketClient(Node):
                 response.message = f"{type(e).__name__}: {e}"
                 self.get_logger().error(f"Unexpected error in {handler.__name__}: {response.message}")
             return response
+
         return callback
 
     # ------------------------------------------------------------------------------------------
@@ -762,12 +795,14 @@ class NavisWebsocketClient(Node):
         response.message = str(values.get("message") or "")
 
     def _cancel_task_cb(self, request: Trigger.Request, response: Trigger.Response):
-        self._send({
-            "op": "publish",
-            "topic": "/run_management/navi_task/cancel",
-            "type": "actionlib_msgs/GoalID",
-            "msg": {"stamp": {"secs": 0, "nsecs": 0}, "id": ""},
-        })
+        self._send(
+            {
+                "op": "publish",
+                "topic": "/run_management/navi_task/cancel",
+                "type": "actionlib_msgs/GoalID",
+                "msg": {"stamp": {"secs": 0, "nsecs": 0}, "id": ""},
+            }
+        )
         response.success = True
         response.message = "Cancel sent; check navis/run_management/global_status for the result"
 
@@ -790,8 +825,9 @@ class NavisWebsocketClient(Node):
     def _set_charge_point_cb(self, request: Trigger.Request, response: Trigger.Response):
         data = self._call_service("/find_charger/set_charge_point", "std_srvs/Empty", {})
         response.success = bool(data.get("result", False))
-        response.message = "Charge point set to the current robot position" if response.success \
-            else "set_charge_point failed"
+        response.message = (
+            "Charge point set to the current robot position" if response.success else "set_charge_point failed"
+        )
 
     def _get_charge_point_cb(self, request: GetChargePoint.Request, response: GetChargePoint.Response):
         data = self._call_service("/find_charger/get_charge_point", "tools_msgs/getChargePoint", {})
@@ -813,7 +849,8 @@ class NavisWebsocketClient(Node):
 
     def _set_charge_level_cb(self, request: SetChargeLevel.Request, response: SetChargeLevel.Response):
         response.success, response.message, values = self._call_checked(
-            "/find_charger/set_charge_level", "tools_msgs/setChargeLevel",
+            "/find_charger/set_charge_level",
+            "tools_msgs/setChargeLevel",
             {"min_charge_level": request.min_charge_level, "max_charge_level": request.max_charge_level},
         )
         response.min_charge_level = max(0, min(255, int(values.get("min_charge_level") or 0)))
@@ -834,20 +871,23 @@ class NavisWebsocketClient(Node):
     # ------------------------------------------------------------------------------------------
 
     def _send_twist(self, linear_x: float, angular_z: float) -> None:
-        self._send({
-            "op": "publish",
-            "topic": self._cmd_vel_topic,
-            "type": "geometry_msgs/Twist",
-            "msg": {
-                "linear": {"x": linear_x, "y": 0.0, "z": 0.0},
-                "angular": {"x": 0.0, "y": 0.0, "z": angular_z},
-            },
-        })
+        self._send(
+            {
+                "op": "publish",
+                "topic": self._cmd_vel_topic,
+                "type": "geometry_msgs/Twist",
+                "msg": {
+                    "linear": {"x": linear_x, "y": 0.0, "z": 0.0},
+                    "angular": {"x": 0.0, "y": 0.0, "z": angular_z},
+                },
+            }
+        )
 
     def _cmd_vel_cb(self, msg: Twist) -> None:
         if not self._cmd_vel_enabled:
-            self.get_logger().warning("navis/cmd_vel ignored: call navis/enable_cmd_vel first",
-                                      throttle_duration_sec=5.0)
+            self.get_logger().warning(
+                "navis/cmd_vel ignored: call navis/enable_cmd_vel first", throttle_duration_sec=5.0
+            )
             return
         lin = max(-self._max_lin, min(self._max_lin, msg.linear.x))
         ang = max(-self._max_ang, min(self._max_ang, msg.angular.z))
@@ -858,44 +898,52 @@ class NavisWebsocketClient(Node):
 
     def _light_cb(self, msg: LightCommand) -> None:
         try:
-            self._send({
-                "op": "publish",
-                "topic": "/scout_light_control",
-                "type": "scout_msgs/ScoutLightCmd",
-                "msg": {
-                    "enable_cmd_light_control": msg.enable_cmd_light_control,
-                    "front_mode": msg.front_mode,
-                    "front_custom_value": min(100, msg.front_custom_value),
-                    "rear_mode": msg.rear_mode,
-                    "rear_custom_value": min(100, msg.rear_custom_value),
-                },
-            })
+            self._send(
+                {
+                    "op": "publish",
+                    "topic": "/scout_light_control",
+                    "type": "scout_msgs/ScoutLightCmd",
+                    "msg": {
+                        "enable_cmd_light_control": msg.enable_cmd_light_control,
+                        "front_mode": msg.front_mode,
+                        "front_custom_value": min(100, msg.front_custom_value),
+                        "rear_mode": msg.rear_mode,
+                        "rear_custom_value": min(100, msg.rear_custom_value),
+                    },
+                }
+            )
         except NavisError as e:
             self.get_logger().warning(f"Light command not sent: {e}")
 
     def _initialpose_cb(self, msg: PoseWithCovarianceStamped) -> None:
         p = msg.pose.pose
         try:
-            self._send({
-                "op": "publish",
-                "topic": "/initialpose",
-                "type": "geometry_msgs/PoseWithCovarianceStamped",
-                "msg": {
-                    "header": {
-                        "seq": 0,
-                        "stamp": _stamp_dict(msg.header.stamp),
-                        "frame_id": msg.header.frame_id or self._map_frame,
-                    },
-                    "pose": {
-                        "pose": {
-                            "position": {"x": p.position.x, "y": p.position.y, "z": p.position.z},
-                            "orientation": {"x": p.orientation.x, "y": p.orientation.y,
-                                            "z": p.orientation.z, "w": p.orientation.w},
+            self._send(
+                {
+                    "op": "publish",
+                    "topic": "/initialpose",
+                    "type": "geometry_msgs/PoseWithCovarianceStamped",
+                    "msg": {
+                        "header": {
+                            "seq": 0,
+                            "stamp": _stamp_dict(msg.header.stamp),
+                            "frame_id": msg.header.frame_id or self._map_frame,
                         },
-                        "covariance": [float(c) for c in msg.pose.covariance],
+                        "pose": {
+                            "pose": {
+                                "position": {"x": p.position.x, "y": p.position.y, "z": p.position.z},
+                                "orientation": {
+                                    "x": p.orientation.x,
+                                    "y": p.orientation.y,
+                                    "z": p.orientation.z,
+                                    "w": p.orientation.w,
+                                },
+                            },
+                            "covariance": [float(c) for c in msg.pose.covariance],
+                        },
                     },
-                },
-            })
+                }
+            )
             self.get_logger().info(f"Initial pose sent: ({p.position.x:.3f}, {p.position.y:.3f})")
         except NavisError as e:
             self.get_logger().warning(f"Initial pose not sent: {e}")
