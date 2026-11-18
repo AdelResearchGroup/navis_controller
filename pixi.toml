@@ -18,6 +18,9 @@ format = "ruff format"
 lint = "ruff check"
 sort-imports = "ruff check --fix --select \"I,RUF022\""
 style = { depends-on = ["format", "sort-imports"] }
+format-check = "ruff format --check"
+sort-imports-check = "ruff check --no-fix --select \"I,RUF022\""
+style-check = { depends-on = ["format-check", "sort-imports-check"] }
 
 [dependencies]
 python = "3.12.*"

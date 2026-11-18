@@ -227,6 +227,10 @@ colcon test-result --verbose
 
 or directly with pytest (after sourcing the workspace): `python3 -m pytest src/navis_controller/test -v`.
 
+With pixi, `pixi run style-check` checks formatting and import order, and `pixi run test` builds and runs
+all tests. CI ([`.github/workflows/main.yml`](.github/workflows/main.yml)) runs both on Linux and Windows
+for every push and pull request; run `pixi run style` to fix formatting before pushing.
+
 | File | What it checks |
 |---|---|
 | `test/test_conversions.py` | Navis JSON ↔ ROS 2 conversion: headers and frames, base64 data, null → NaN, CameraInfo fields, Navis-specific messages, task theta units |
