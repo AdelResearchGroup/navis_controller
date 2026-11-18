@@ -15,6 +15,7 @@ from geometry_msgs.msg import PoseWithCovarianceStamped, Twist
 from nav_msgs.msg import Odometry
 from navis_msgs.msg import SlamStatus, TaskPoint
 from navis_msgs.srv import (
+    ExportMap,
     GetChargePoint,
     GetMapImage,
     GetMapInfo,
@@ -27,6 +28,7 @@ from navis_msgs.srv import (
     SetChargeLevel,
     SetTask,
 )
+from navis_test_utils import Harness, wait_for
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.parameter import Parameter
 from sensor_msgs.msg import BatteryState
@@ -34,41 +36,6 @@ from std_srvs.srv import SetBool, Trigger
 
 from navis_controller.navis_http import NavisHTTPClient
 from navis_controller.navis_websocket import NavisWebsocketClient
-
-
-def wait_for(condition, timeout: float = 5.0, period: float = 0.05) -> bool:
-    end = time.monotonic() + timeout
-    while time.monotonic() < end:
-        if condition():
-            return True
-        time.sleep(period)
-    return bool(condition())
-
-
-class Harness:
-    def __init__(self, fake: FakeNavis, client):
-        self.fake = fake
-        self.client = client
-        self._clients = {}
-
-    def call_async(self, srv_type, name: str, request=None):
-        key = (srv_type, name)
-        if key not in self._clients:
-            cli = self.client.create_client(srv_type, name)
-            assert cli.wait_for_service(timeout_sec=5.0), f"service {name} not available"
-            self._clients[key] = cli
-        return self._clients[key].call_async(request if request is not None else srv_type.Request())
-
-    def call(self, srv_type, name: str, request=None, timeout: float = 10.0):
-        future = self.call_async(srv_type, name, request)
-        assert wait_for(future.done, timeout), f"{name} did not respond"
-        return future.result()
-
-    def collect(self, msg_type, topic: str):
-        """Subscribe on the test client; returns (subscription, list of received messages)."""
-        received = []
-        sub = self.client.create_subscription(msg_type, topic, received.append, 10)
-        return sub, received
 
 
 @pytest.fixture(scope="module")
@@ -163,6 +130,28 @@ def test_pixel_to_map(h):
     assert res.position.y == pytest.approx((1000 - 600) * 0.05 - 20.0)
 
 
+def test_pixel_to_map_sends_whole_pixels(h):
+    res = h.call(PixelToMap, "/navis/pixel_to_map", PixelToMap.Request(map_name="office", png_x=200.4, png_y=599.6))
+    assert res.success, res.message
+    _, _, query, _ = [r for r in h.fake.http_requests if r[1] == "/get_map/positon"][-1]
+    assert (query["pngX"], query["pngY"]) == ("200", "600")
+
+
+def test_export_map_uses_map_id(h, tmp_path):
+    target = tmp_path / "office.zip"
+    res = h.call(ExportMap, "/navis/export_map", ExportMap.Request(map_name="office", save_path=str(target)))
+    assert res.success, res.message
+    assert target.read_bytes().startswith(b"PK")
+    _, _, query, _ = [r for r in h.fake.http_requests if r[1] == "/download_map_zip"][-1]
+    assert query["id"] == "1671087653"
+
+
+def test_export_map_unknown_reports_all_attempts(h):
+    res = h.call(ExportMap, "/navis/export_map", ExportMap.Request(map_name="missing"))
+    assert not res.success
+    assert "id=missing" in res.message and "defeat" in res.message
+
+
 def test_get_and_set_task(h):
     res = h.call(GetTask, "/navis/get_task", GetTask.Request(map_name="office", task_name="p1"))
     assert res.success, res.message
@@ -207,12 +196,17 @@ def test_versions(h):
     assert res.success and res.versions[0].type == "X-7010"
 
 
-def test_relogin_after_token_expiry(h):
-    before = h.fake.logins
-    h.fake.expire_tokens()
-    res = h.call(GetMapList, "/navis/get_map_list")
-    assert res.success, res.message
-    assert h.fake.logins == before + 1
+@pytest.mark.parametrize("http_401", [False, True], ids=["code_1012", "http_401"])
+def test_relogin_after_token_expiry(h, http_401):
+    h.fake.auth_error_as_http_401 = http_401
+    try:
+        before = h.fake.logins
+        h.fake.expire_tokens()
+        res = h.call(GetMapList, "/navis/get_map_list")
+        assert res.success, res.message
+        assert h.fake.logins == before + 1
+    finally:
+        h.fake.auth_error_as_http_401 = False
 
 
 def test_slam_operate(h):

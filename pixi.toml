@@ -12,6 +12,8 @@ build = "colcon build --base-paths . ../navis_msgs --cmake-args -DCMAKE_BUILD_TY
 clean = { cmd = "python -c \"import shutil; [shutil.rmtree(d, ignore_errors=True) for d in ('build', 'install', 'log')]\"" }
 test = { cmd = "colcon test --base-paths . ../navis_msgs --packages-select navis_controller --event-handlers console_direct+ && colcon test-result --verbose", depends-on = ["build"] }
 pytest = "python -m pytest test -v"
+# Needs NAVIS_ROBOT_IP; read-only unless NAVIS_ALLOW_WRITES=1. Never moves the base (see test/test_robot.py).
+test-robot = { cmd = "colcon test --base-paths . ../navis_msgs --packages-select navis_controller --event-handlers console_direct+ --pytest-args test/test_robot.py -v -rs && colcon test-result --verbose", depends-on = ["build"] }
 launch = "ros2 launch navis_controller navis.launch.py"
 fake-navis = "python test/fake_navis_server.py --http-port 8880 --ws-port 9090 -v"
 format = "ruff format"

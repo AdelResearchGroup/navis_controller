@@ -2,7 +2,7 @@
 
 It answers with the example data from the Navis user manual and records everything it receives,
 so tests can check what the bridge nodes sent. It does not simulate the robot: nothing moves, and
-navigation "starts" instantly.
+navigation starts and stops instantly (``/slam_status`` follows slam_operate and /input/op).
 
 Use from tests:
 
@@ -124,12 +124,13 @@ class FakeNavis:
         self.connections = 0  # total websocket connections accepted so far
 
         # Knobs for tests
-        self.echo_ids = True  # echo the call_service "id" in service_response
+        self.echo_ids = True
+        self.auth_error_as_http_401 = False  # reject bad tokens with HTTP 401 instead of code 1012  # echo the call_service "id" in service_response
         self.service_delay: Callable[[str, dict], float] = lambda service, args: 0.0
 
         self.valid_tokens: set[str] = set()
         self.tasks = {("office", "p1"): json.loads(json.dumps(TASK_P1))}
-        self.topic_messages = dict(TOPIC_MESSAGES)
+        self.topic_messages = json.loads(json.dumps(TOPIC_MESSAGES))  # deep copy: navigation state changes
 
         self._conns: list[dict] = []
         self._http: Optional[ThreadingHTTPServer] = None
@@ -245,14 +246,19 @@ class FakeNavis:
             return self._json(_standard(token))
 
         if headers.get("Authorization") not in self.valid_tokens:
-            return self._json(_standard(ok=False, msg="unauthorized"), status=401)
+            # What the real Navis does: HTTP 200 with code 1012 (not HTTP 401)
+            if self.auth_error_as_http_401:
+                return self._json(_standard(ok=False, msg="unauthorized"), status=401)
+            body = _standard(ok=False, msg="The authorization value in the request header parameter is incorrect")
+            body["code"] = 1012
+            return self._json(body)
 
         route = {
             ("POST", "/slam_operate"): self._slam_operate,
             ("GET", "/map_list"): self._map_list,
             ("GET", "/map_info"): self._map_info,
             ("GET", "/downloadpng"): self._download_png,
-            ("GET", "/download_map_zip"): self._download_zip,
+            ("GET", "/download_map_zip"): self._download_map_zip,
             ("POST", "/download_map_list"): self._download_zip,
             ("GET", "/get_map/positon"): self._pixel_to_map,
             ("GET", "/get_world/positon"): self._map_to_pixel,
@@ -292,7 +298,11 @@ class FakeNavis:
             ),
         }.get((method, path))
         if route is not None:
-            return route(query, body)
+            try:
+                return route(query, body)
+            except ValueError as e:  # like Navis (tornado): HTTP 500 with a Python traceback
+                text = f'Traceback (most recent call last):\n  File "libs/maplist.py"\nValueError: {e}'
+                return 500, "text/plain", text.encode()
         if path in {
             "/rename_map",
             "/delete_map",
@@ -311,8 +321,19 @@ class FakeNavis:
     def _json(obj, status: int = 200) -> tuple[int, str, bytes]:
         return status, "application/json;charset=UTF-8", json.dumps(obj).encode("utf-8")
 
+    def set_navigation(self, running: bool, map_name: str = "office") -> None:
+        """Set the navigation state reported on /slam_status."""
+        nav = {"state": running, "name": map_name if running else "", "task": ""}
+        status = dict(self.topic_messages["/slam_status"], nav=nav)
+        self.topic_messages["/slam_status"] = status
+
+    def _operate(self, op_type, id_type, map_name) -> None:
+        if id_type == "navigation" and op_type in ("start", "stop"):
+            self.set_navigation(op_type == "start", map_name or "")
+
     def _slam_operate(self, query, body):
         body = body or {}
+        self._operate(body.get("opType"), body.get("idType"), body.get("fileName"))
         return self._json(_standard(f"{body.get('opType')} {body.get('idType')} success."))
 
     def _map_list(self, query, body):
@@ -329,11 +350,17 @@ class FakeNavis:
             return self._json(_standard(ok=False, msg="map not found"))
         return 200, "image/png", FAKE_PNG
 
+    def _download_map_zip(self, query, body):
+        # The real Navis answered "defeat" when given the map name; assume it wants the numeric map id.
+        if query.get("id") != "1671087653":
+            return self._json({"success": False, "code": -1, "msg": "defeat", "data": ""})
+        return self._download_zip(query, body)
+
     def _download_zip(self, query, body):
         return 200, "application/octet-stream", b"PK\x03\x04fake zip"
 
     def _pixel_to_map(self, query, body):
-        png_x, png_y = float(query["pngX"]), float(query["pngY"])
+        png_x, png_y = int(query["pngX"]), int(query["pngY"])  # like Navis: "300.0" is an error
         x = png_x * MAP_INFO["resolution"] + MAP_INFO["originX"]
         y = (MAP_INFO["gridHeight"] - png_y) * MAP_INFO["resolution"] + MAP_INFO["originY"]
         return self._json(_standard({"map_pose_x": x, "map_pose_y": y}))
@@ -407,6 +434,7 @@ class FakeNavis:
         await asyncio.sleep(self.service_delay(service, args))
         result, values = True, {}
         if service == "/input/op":
+            self._operate(args.get("op_type"), args.get("id_type"), args.get("file_name"))
             values = {"success": True, "message": f"{args.get('op_type')} {args.get('id_type')} success."}
         elif service == "/run_management/pause":
             values = {"success": True, "message": f"pause={args.get('pause')}"}
@@ -478,9 +506,12 @@ def main() -> None:
     parser.add_argument("--http-port", type=int, default=8880)
     parser.add_argument("--ws-port", type=int, default=9090)
     parser.add_argument("-v", "--verbose", action="store_true", help="print every request")
+    parser.add_argument("--navigation-off", action="store_true", help="start with navigation stopped")
     args = parser.parse_args()
 
     fake = FakeNavis(args.http_port, args.ws_port, verbose=args.verbose)
+    if args.navigation_off:
+        fake.set_navigation(False)
     fake.start()
     print(f"Fake Navis: http://127.0.0.1:{fake.http_port}  ws://127.0.0.1:{fake.ws_port}  (Ctrl-C to stop)")
     try:

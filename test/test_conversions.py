@@ -12,7 +12,7 @@ from navis_msgs.msg import GnssStatus, Task, TaskPoint
 from sensor_msgs.msg import BatteryState, CameraInfo, Imu, LaserScan, NavSatStatus
 
 from navis_controller import navis_websocket as ws
-from navis_controller.navis_http import NavisHTTPClient, _navis_ok, _to_float, _to_int
+from navis_controller.navis_http import NavisHTTPClient, _http_error_text, _is_auth_error, _navis_ok, _to_float, _to_int
 
 HEADER = {"stamp": {"secs": 1681805920, "nsecs": 64378373}, "frame_id": "/map", "seq": 12}
 
@@ -347,3 +347,22 @@ def test_realtime_point_is_minimal():
     d = _TaskConverter(True)._point_to_navis(point, full=False)
     assert set(d) == {"position", "isNew", "cpx", "cpy"}
     assert d["position"]["theta"] == pytest.approx(90.0)
+
+
+def test_http_error_text_keeps_exception_line():
+    tb = (
+        "Traceback (most recent call last):\n"
+        '  File "tornado/web.py", line 1704, in _execute\n'
+        '  File "libs/maplist.py", line 262, in png_coordinate_to_map\n'
+        "ValueError: invalid literal for int() with base 10: '300.0'\n"
+    )
+    assert _http_error_text(tb) == "ValueError: invalid literal for int() with base 10: '300.0'"
+    assert _http_error_text("Bad gateway") == "Bad gateway"
+
+
+def test_is_auth_error():
+    msg = "The authorization value in the request header parameter is incorrect"
+    assert _is_auth_error({"success": False, "code": 1012, "msg": msg})
+    assert _is_auth_error({"code": "1012"})
+    assert not _is_auth_error({"success": False, "code": -1, "msg": "defeat"})
+    assert not _is_auth_error({"success": True, "code": 0})

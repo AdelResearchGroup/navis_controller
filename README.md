@@ -97,10 +97,10 @@ to convert from or to map-image pixels.
 | `navis/get_map_image` | `navis_msgs/srv/GetMapImage` | `GET /downloadpng` |
 | `navis/rename_map` | `navis_msgs/srv/RenameMap` | `POST /rename_map` |
 | `navis/delete_map` | `navis_msgs/srv/DeleteMap` | `DELETE /delete_map` |
-| `navis/export_map` | `navis_msgs/srv/ExportMap` | `GET /download_map_zip` |
+| `navis/export_map` | `navis_msgs/srv/ExportMap` | `GET /download_map_zip` (sends the numeric map id, falls back to the name) |
 | `navis/export_maps` | `navis_msgs/srv/ExportMaps` | `POST /download_map_list` |
 | `navis/import_map` | `navis_msgs/srv/ImportMap` | `POST /upload_map_zip` |
-| `navis/pixel_to_map` | `navis_msgs/srv/PixelToMap` | `GET /get_map/positon` |
+| `navis/pixel_to_map` | `navis_msgs/srv/PixelToMap` | `GET /get_map/positon` (pixels are rounded to integers; Navis rejects fractions) |
 | `navis/map_to_pixel` | `navis_msgs/srv/MapToPixel` | `GET /get_world/positon` |
 | `navis/get_task` | `navis_msgs/srv/GetTask` | `GET /get_tasks` |
 | `navis/set_task` | `navis_msgs/srv/SetTask` | `POST /set_task` |
@@ -235,7 +235,9 @@ for every push and pull request; run `pixi run style` to fix formatting before p
 |---|---|
 | `test/test_conversions.py` | Navis JSON ↔ ROS 2 conversion: headers and frames, base64 data, null → NaN, CameraInfo fields, Navis-specific messages, task theta units |
 | `test/test_integration.py` | both nodes against the fake server: login and re-login, service calls, lazy topic subscription, heartbeat, concurrent service calls, `cmd_vel` gating, reconnection |
+| `test/test_robot.py` | both nodes against a real Navis, without moving the base (skipped unless `NAVIS_ROBOT_IP` is set, see below) |
 | `test/fake_navis_server.py` | fake Navis HTTP + websocket server used by the integration tests |
+| `test/navis_test_utils.py` | helpers shared by the integration and robot tests |
 
 The fake server can also be run on its own, to try the nodes or the launch file without the robot:
 
@@ -247,3 +249,39 @@ ros2 launch navis_controller navis.launch.py robot_ip:=127.0.0.1
 It answers with the example data from the Navis manual (map `office`, task `p1`) and prints every
 request with `-v`. It does not simulate the robot, so these tests do not replace checks on the real
 hardware, such as task heading units and whether `/cmd_vel` moves the base.
+
+### Tests on the robot
+
+`test/test_robot.py` checks the nodes against a real Navis. It is skipped unless `NAVIS_ROBOT_IP` is
+set, so CI and the commands above never run it. **It never moves the base**: it does not start
+mapping or recording, run or pause tasks, send `cmd_vel` or an initial pose, or change charging,
+obstacle-avoidance or map settings. By default it only reads; existing maps and tasks are never changed.
+Navigation is only started with `NAVIS_START_NAVIGATION=1` (this loads the map and localization; the
+base does not move).
+
+```bash
+NAVIS_ROBOT_IP=192.168.6.102 pixi run test-robot              # Linux
+$env:NAVIS_ROBOT_IP="192.168.6.102"; pixi run test-robot      # Windows PowerShell
+```
+
+| Variable | Meaning |
+|---|---|
+| `NAVIS_ROBOT_IP` | Navis address (required) |
+| `NAVIS_HTTP_PORT` / `NAVIS_WS_PORT` | default `8880` / `9090` |
+| `NAVIS_PASSWORD` | if the robot does not use the manual's default password |
+| `NAVIS_TEST_MAP` | map to read; default is the map navigation is running on, else the first map |
+| `NAVIS_ALLOW_WRITES=1` | also create a temporary task, read it back and delete it |
+| `NAVIS_START_NAVIGATION=1` | if navigation is not running, start it on the test map for the navigation tests (`/navis/slam_operate`) and stop it again at the end (`/navis/nav_input`); navigation that is already running is left alone |
+
+The navigation tests (`/odom`, `localizer_pose`, `global_status`, charge point) run last and are
+skipped when navigation is off and `NAVIS_START_NAVIGATION` is not set. `localizer_pose` needs the
+robot to be localized; if it is not, set an initial pose (e.g. in the web UI) first.
+
+What it checks: login and automatic re-login after an invalid token, map list/info/image (the PNG
+size must match the map info), pixel ↔ map conversion against the manual's formula, the tasks of
+the map (indices, orientations, points inside the map), map export ZIP, versions, camera list, that
+the websocket connection survives the heartbeat window, the converted topics (frames without leading
+slash, valid quaternions, consistent LaserScan/PointCloud2 sizes, battery percentage), unsubscribing
+when unused, and the charge point. Topics that depend on hardware or the current mode (camera, GNSS,
+point cloud, localization) are skipped when nothing arrives within 5 s. It cannot tell whether task
+headings are in degrees or radians; compare a task's heading with the Navis web UI for that.

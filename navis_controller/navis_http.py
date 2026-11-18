@@ -122,6 +122,27 @@ def _navis_ok(body: dict) -> bool:
     return bool(body.get("success"))
 
 
+# Navis answers a missing/invalid/expired token with HTTP 200 and this code (seen on a real robot:
+# "The authorization value in the request header parameter is incorrect", code 1012).
+AUTH_ERROR_CODES = {"1012"}
+
+
+def _is_auth_error(body: Any) -> bool:
+    if not isinstance(body, dict):
+        return False
+    if str(body.get("code")) in AUTH_ERROR_CODES:
+        return True
+    return "authorization" in str(body.get("msg") or "").lower()
+
+
+def _http_error_text(text: str) -> str:
+    """Short error text; for a Python traceback (Navis runs tornado) keep the exception line."""
+    lines = [line.strip() for line in text.strip().splitlines() if line.strip()]
+    if lines and lines[0].startswith("Traceback"):
+        return lines[-1][:300]
+    return text[:300]
+
+
 def _navis_error_text(path: str, body: dict) -> str:
     return f"{path}: {body.get('msg') or body.get('data') or 'request failed'} (code {body.get('code')})"
 
@@ -250,7 +271,8 @@ class NavisHTTPClient(Node):
 
         Returns the parsed JSON body, or the ``requests.Response`` when ``raw`` is set (file
         downloads). Raises NavisError on transport errors and, if ``check`` is set, when Navis
-        reports failure. Retries once with a fresh token on HTTP 401/403.
+        reports failure. Retries once with a fresh token when the token is rejected (HTTP 401/403,
+        or HTTP 200 with an authorization error code, which is what Navis actually does).
         """
         url = self._base_url + path
         timeout = self._timeout if timeout is None else timeout
@@ -273,7 +295,7 @@ class NavisHTTPClient(Node):
                 self._invalidate_token()
                 continue
             if r.status_code >= 400:
-                raise NavisError(f"{method} {path}: HTTP {r.status_code} {r.text[:200]}")
+                raise NavisError(f"{method} {path}: HTTP {r.status_code} {_http_error_text(r.text)}")
 
             is_json = "json" in r.headers.get("Content-Type", "")
             if raw:
@@ -282,6 +304,9 @@ class NavisHTTPClient(Node):
                         body = r.json()
                     except ValueError:
                         body = {}
+                    if _is_auth_error(body) and attempt == 0:
+                        self._invalidate_token()
+                        continue
                     raise NavisError(_navis_error_text(path, body))
                 return r
 
@@ -289,6 +314,9 @@ class NavisHTTPClient(Node):
                 body = r.json()
             except ValueError as e:
                 raise NavisError(f"{method} {path}: response is not JSON: {r.text[:200]}") from e
+            if _is_auth_error(body) and attempt == 0:
+                self._invalidate_token()
+                continue
             if check and not _navis_ok(body):
                 raise NavisError(_navis_error_text(path, body))
             return body
@@ -520,13 +548,27 @@ class NavisHTTPClient(Node):
         response.message = self._message(body)
 
     def _export_map_cb(self, request: ExportMap.Request, response: ExportMap.Response):
-        r = self._request(
-            "GET",
-            "/download_map_zip",
-            params={"id": request.map_name},
-            raw=True,
-            timeout=self._download_timeout,
-        )
+        # The manual says "id" is the map file name, but the robot answered "defeat" for a map name.
+        # Try the numeric map id from the map list first (as used by /download_map_list), then the name.
+        candidates = []
+        body = self._request("GET", "/map_list", params={"page": 1, "limit": -1, "sortType": "", "reverse": ""})
+        for item in (body.get("data") or {}).get("mapList") or []:
+            if item.get("mapName") == request.map_name and item.get("id") not in (None, ""):
+                candidates.append(str(item["id"]))
+        candidates.append(request.map_name)
+
+        errors = []
+        r = None
+        for map_id in candidates:
+            try:
+                r = self._request(
+                    "GET", "/download_map_zip", params={"id": map_id}, raw=True, timeout=self._download_timeout
+                )
+                break
+            except NavisError as e:
+                errors.append(f"id={map_id}: {e}")
+        if r is None:
+            raise NavisError("; ".join(errors))
         target = request.save_path or os.path.join(self._download_dir, f"{request.map_name}.zip")
         response.saved_path = self._write_file(r.content, target)
         response.success = True
@@ -562,7 +604,8 @@ class NavisHTTPClient(Node):
         body = self._request(
             "GET",
             "/get_map/positon",  # sic, Navis spelling
-            params={"mapName": request.map_name, "pngX": request.png_x, "pngY": request.png_y},
+            # Navis parses these as integers ("300.0" gives HTTP 500), so send whole pixels.
+            params={"mapName": request.map_name, "pngX": round(request.png_x), "pngY": round(request.png_y)},
         )
         data = body.get("data") or {}
         response.position.x = _to_float(data.get("map_pose_x"))
