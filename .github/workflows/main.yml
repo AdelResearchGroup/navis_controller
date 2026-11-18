@@ -15,11 +15,11 @@ jobs:
       run:
         working-directory: navis_controller
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: navis_controller
       # The build expects navis_msgs next to this repository (../navis_msgs).
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: AdelResearchGroup/navis_msgs
           path: navis_msgs
