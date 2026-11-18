@@ -19,9 +19,7 @@ setup(
     entry_points={
         "console_scripts": [
             "navis_websocket = navis_controller.navis_websocket:main",
-            "odom_ema = navis_controller.odom_ema:main",
-            "navis_http = navis_controller.navis_http:main",
-            "map_viewer = navis_controller.map_viewer:main"
+            "navis_http = navis_controller.navis_http:main"
         ],
     },
 )
