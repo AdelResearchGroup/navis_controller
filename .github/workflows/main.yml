@@ -1,0 +1,39 @@
+name: CI
+on: [ push, pull_request ]
+permissions:
+  contents: read
+jobs:
+  pixi:
+    name: pixi (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, windows-latest ]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: navis_controller
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: navis_controller
+      # The build expects navis_msgs next to this repository (../navis_msgs).
+      - uses: actions/checkout@v7
+        with:
+          repository: AdelResearchGroup/navis_msgs
+          path: navis_msgs
+      - uses: prefix-dev/setup-pixi@v0.9.4
+        with:
+          pixi-version: v0.78.0
+          manifest-path: navis_controller/pixi.toml
+          environments: default
+          locked: true
+          cache: false
+      - run: pixi run --locked -e default style-check
+      # Builds navis_msgs + navis_controller, then runs the unit tests and the
+      # integration tests against the local fake Navis server (no robot needed).
+      - run: pixi run --locked -e default test
+      - name: Check tracked files unchanged
+        if: always()
+        run: git diff --exit-code HEAD
