@@ -130,8 +130,8 @@ def _navis_error_text(path: str, body: dict) -> str:
 # ----------------------------------------------------------------------------------------------
 
 class NavisHTTPClient(Node):
-    def __init__(self):
-        super().__init__("navis_http")
+    def __init__(self, **kwargs):
+        super().__init__("navis_http", **kwargs)
 
         self.declare_parameter("base_url", "http://192.168.6.102:8880")
         self.declare_parameter("username", "agilex")

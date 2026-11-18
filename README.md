@@ -189,3 +189,32 @@ are always streamed. There is a delay of up to 1 s before the first message afte
 
 Timestamps are replaced with local time by default because the robot clock is not guaranteed to be
 in sync with the ROS machine.
+
+## Testing
+
+The tests need no robot. Build first, then run them with colcon:
+
+```bash
+colcon build --packages-select navis_msgs navis_controller && source install/setup.bash
+colcon test --packages-select navis_controller --event-handlers console_direct+
+colcon test-result --verbose
+```
+
+or directly with pytest (after sourcing the workspace): `python3 -m pytest src/navis_controller/test -v`.
+
+| File | What it checks |
+|---|---|
+| `test/test_conversions.py` | Navis JSON ↔ ROS 2 conversion: headers and frames, base64 data, null → NaN, CameraInfo fields, Navis-specific messages, task theta units |
+| `test/test_integration.py` | both nodes against the fake server: login and re-login, service calls, lazy topic subscription, heartbeat, concurrent service calls, `cmd_vel` gating, reconnection |
+| `test/fake_navis_server.py` | fake Navis HTTP + websocket server used by the integration tests |
+
+The fake server can also be run on its own, to try the nodes or the launch file without the robot:
+
+```bash
+python3 src/navis_controller/test/fake_navis_server.py --http-port 8880 --ws-port 9090 -v
+ros2 launch navis_controller navis.launch.py robot_ip:=127.0.0.1
+```
+
+It answers with the example data from the Navis manual (map `office`, task `p1`) and prints every
+request with `-v`. It does not simulate the robot, so these tests do not replace checks on the real
+hardware, such as task heading units and whether `/cmd_vel` moves the base.

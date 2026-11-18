@@ -384,8 +384,8 @@ class _PendingCall:
 
 
 class NavisWebsocketClient(Node):
-    def __init__(self):
-        super().__init__("navis_websocket")
+    def __init__(self, **kwargs):
+        super().__init__("navis_websocket", **kwargs)
 
         self.declare_parameter("ws_url", "ws://192.168.6.102:9090")
         self.declare_parameter("always_subscribe", ["/slam_status"])
