@@ -14,12 +14,27 @@ expiry) and the 1 Hz websocket heartbeat (Navis drops clients that stay silent f
 
 ## Running
 
+Start both nodes with the launch file:
+
 ```bash
-ros2 run navis_controller navis_http
-ros2 run navis_controller navis_websocket
+ros2 launch navis_controller navis.launch.py
+ros2 launch navis_controller navis.launch.py robot_ip:=192.168.6.102 namespace:=bunker
 ```
 
-Point them at the robot with parameters, e.g.
+| Launch argument | Default | Meaning |
+|---|---|---|
+| `robot_ip` | `192.168.6.102` | IP address of the Navis module |
+| `http_port` | `8880` | Navis HTTP port |
+| `ws_port` | `9090` | Navis websocket port |
+| `namespace` | (none) | namespace for both nodes |
+| `params_file` | `config/navis.yaml` | parameters for both nodes |
+| `log_level` | `info` | log level for both nodes |
+
+All other node parameters (listed below) live in [config/navis.yaml](config/navis.yaml). To change
+them, copy that file and pass it with `params_file:=/path/to/copy.yaml`. The robot address always
+comes from the launch arguments, which override `base_url` / `ws_url` from the file.
+
+To run a single node:
 
 ```bash
 ros2 run navis_controller navis_http --ros-args -p base_url:=http://192.168.6.102:8880

@@ -1,0 +1,29 @@
+# Parameters for the Navis bridge nodes, loaded by launch/navis.launch.py.
+# base_url and ws_url are set from the launch arguments (robot_ip, http_port, ws_port).
+# The values below are the node defaults; see the README for what each one does.
+# "/**" matches the nodes in any namespace.
+
+/**/navis_http:
+  ros__parameters:
+    username: agilex
+    password: NTdhMTE5NGNiMDczY2U4YjNiYjM2NWU0YjgwNWE5YWU=
+    timeout: 10.0
+    download_timeout: 120.0
+    download_dir: ~/navis_maps
+    frame_id: map
+    task_theta_in_degrees: true
+
+/**/navis_websocket:
+  ros__parameters:
+    always_subscribe: ["/slam_status"]
+    use_cbor: false
+    use_navis_stamps: false
+    map_frame: map
+    gnss_frame: gnss
+    service_timeout: 30.0
+    reconnect_delay: 2.0
+    heartbeat_period: 1.0
+    cmd_vel_topic: /cmd_vel
+    cmd_vel_enabled: false
+    max_linear_speed: 1.5
+    max_angular_speed: 1.5
